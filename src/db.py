@@ -28,6 +28,13 @@ def init_db():
             last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS thread_sessions (
+            thread_ts TEXT PRIMARY KEY,
+            session_id INTEGER,
+            channel_id TEXT,
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
+        );
+
         CREATE TABLE IF NOT EXISTS prompt_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id INTEGER,
@@ -119,6 +126,28 @@ def log_prompt(session_db_id: int, channel_id: str, slack_user_id: str, slack_us
     )
     conn.commit()
     conn.close()
+
+
+def link_thread_to_session(thread_ts: str, session_db_id: int, channel_id: str):
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO thread_sessions (thread_ts, session_id, channel_id) VALUES (?, ?, ?)",
+        (thread_ts, session_db_id, channel_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_session_by_thread(thread_ts: str) -> dict | None:
+    conn = get_connection()
+    row = conn.execute(
+        """SELECT s.* FROM sessions s
+           JOIN thread_sessions ts ON ts.session_id = s.id
+           WHERE ts.thread_ts = ?""",
+        (thread_ts,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def update_prompt_response(session_db_id: int, prompt: str, response_summary: str):

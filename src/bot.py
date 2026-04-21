@@ -45,7 +45,7 @@ def _update_thinking(client, channel: str, ts: str, elapsed: int):
     )
 
 
-def _process_message(client, channel_id: str, user_id: str, text: str, thread_ts: str | None):
+def _process_message(client, channel_id: str, user_id: str, text: str, thread_ts: str | None, is_thread_reply: bool = False):
     global _processing
     _processing = True
 
@@ -54,12 +54,25 @@ def _process_message(client, channel_id: str, user_id: str, text: str, thread_ts
         username = _resolve_username(client, user_id)
         default_repo = os.environ.get("DEFAULT_REPO_PATH", os.getcwd())
 
-        session = db.get_active_session(channel_id)
+        # Thread replies use the thread's session, top-level uses active session
+        session = None
+        if is_thread_reply and thread_ts:
+            session = db.get_session_by_thread(thread_ts)
+            if session:
+                logger.info(f"Resuming thread session #{session['id']}")
+
+        if not session:
+            session = db.get_active_session(channel_id)
+
         if not session:
             db_id = db.create_session(channel_id, default_repo, text)
             session = db.get_session_by_id(db_id)
         else:
             db_id = session["id"]
+
+        # Link this thread to the session
+        if thread_ts:
+            db.link_thread_to_session(thread_ts, db_id, channel_id)
 
         db.log_prompt(db_id, channel_id, user_id, username, text)
 
@@ -130,17 +143,17 @@ def _process_next(client):
             item = _queue.popleft()
             thread = threading.Thread(
                 target=_process_message,
-                args=(client, item["channel"], item["user"], item["text"], item["thread_ts"]),
+                args=(client, item["channel"], item["user"], item["text"], item["thread_ts"], item.get("is_thread_reply", False)),
                 daemon=True,
             )
             thread.start()
 
 
-def _enqueue(client, channel_id: str, user_id: str, text: str, thread_ts: str | None):
+def _enqueue(client, channel_id: str, user_id: str, text: str, thread_ts: str | None, is_thread_reply: bool = False):
     if _processing:
         with _queue_lock:
             pos = len(_queue) + 1
-            _queue.append({"channel": channel_id, "user": user_id, "text": text, "thread_ts": thread_ts})
+            _queue.append({"channel": channel_id, "user": user_id, "text": text, "thread_ts": thread_ts, "is_thread_reply": is_thread_reply})
         client.chat_postMessage(
             channel=channel_id,
             text=f"⏳ Queued ({pos} ahead)",
@@ -149,7 +162,7 @@ def _enqueue(client, channel_id: str, user_id: str, text: str, thread_ts: str | 
     else:
         thread = threading.Thread(
             target=_process_message,
-            args=(client, channel_id, user_id, text, thread_ts),
+            args=(client, channel_id, user_id, text, thread_ts, is_thread_reply),
             daemon=True,
         )
         thread.start()
@@ -168,6 +181,7 @@ def handle_message(event, client, say):
 
     channel_id = event["channel"]
     user_id = event["user"]
+    is_thread_reply = "thread_ts" in event
     thread_ts = event.get("thread_ts", event["ts"])
 
     new_triggers = ["new session", "start over", "fresh start"]
@@ -175,7 +189,7 @@ def handle_message(event, client, say):
         _handle_new_session(client, channel_id, text, thread_ts)
         return
 
-    _enqueue(client, channel_id, user_id, text, thread_ts)
+    _enqueue(client, channel_id, user_id, text, thread_ts, is_thread_reply)
 
 
 def _handle_new_session(client, channel_id: str, text: str, thread_ts: str):

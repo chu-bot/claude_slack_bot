@@ -65,7 +65,8 @@ The session ID is always visible so everyone knows which context they're in.
 There is **one active session** at a time across the channel. Think of it like a shared terminal — people pop in when they have time and contribute to whatever the current session is working on.
 
 - The **active session** persists until someone explicitly starts a new one (`/new`) or loads a different one (`/load`).
-- All messages in the channel go to the active session, regardless of threading.
+- **Thread replies resume context.** If you reply in a thread, the bot automatically resumes the session that was used in that thread (via `thread_sessions` table), regardless of which session is currently active.
+- **Top-level messages** go to the active session.
 - Sessions map 1:1 to a Claude Code session ID and a repo path.
 - Sessions are **isolated** from any personal Claude Code sessions running elsewhere.
 - Processing is **sequential** — if a message comes in while Claude is working, it queues and the user sees "⏳ Queued (1 ahead)". When the current task finishes, the next one starts automatically.
@@ -167,6 +168,13 @@ CREATE TABLE sessions (
     is_active BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE thread_sessions (
+    thread_ts TEXT PRIMARY KEY,
+    session_id INTEGER,
+    channel_id TEXT,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
 
 CREATE TABLE prompt_log (
