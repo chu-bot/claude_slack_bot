@@ -122,6 +122,15 @@ def _process_message(client, channel_id: str, user_id: str, text: str, thread_ts
             text=formatted,
         )
 
+        # Also post to main channel if this was a thread reply
+        if is_thread_reply:
+            client.chat_postMessage(
+                channel=channel_id,
+                text=formatted,
+                thread_ts=thread_ts,
+                reply_broadcast=True,
+            )
+
     except Exception as e:
         logger.exception(f"Error processing message: {e}")
         try:

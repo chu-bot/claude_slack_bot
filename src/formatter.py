@@ -1,7 +1,16 @@
 import re
 
 
+def md_to_slack(text: str) -> str:
+    text = re.sub(r'\*\*(.+?)\*\*', r'*\1*', text)
+    text = re.sub(r'\[(.+?)\]\((.+?)\)', r'<\2|\1>', text)
+    text = re.sub(r'~~(.+?)~~', r'~\1~', text)
+    text = re.sub(r'^#{1,6}\s+(.+)$', r'*\1*', text, flags=re.MULTILINE)
+    return text
+
+
 def format_response(output: str, session_id: int, is_error: bool = False) -> str:
+    output = md_to_slack(output)
     if is_error:
         return f"❌ [Session #{session_id}]\n\n{output}"
 
