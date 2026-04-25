@@ -5,13 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "pygithub>=2.9.0",
+    "claude-agent-sdk>=0.1.67",
     "python-dotenv>=1.2.2",
     "slack-bolt>=1.28.0",
-]
-
-[tool.uv.workspace]
-members = [
-    "projects/snake-game",
-    "projects/family_project",
 ]
